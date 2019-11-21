@@ -16,13 +16,36 @@ GlobalOptimization::GlobalOptimization()
 {
 	initGPS = false;
     newGPS = false;
-	WGPS_T_WVIO = Eigen::Matrix4d::Identity();
+    //W_T_WVIO = Eigen::Matrix4d::Identity();
+    W_T_WVIO << -0.38251987,  0.34100881, -0.85871505, 4.688319,
+                 0.16546774,  0.93965641,  0.29944324, -1.786938,
+                 0.90900989, -0.02754666, -0.4158632, 0.783338,
+                 0.0, 0.0, 0.0, 1.0;
+
     threadOpt = std::thread(&GlobalOptimization::optimize, this);
 }
 
 GlobalOptimization::~GlobalOptimization()
 {
     threadOpt.detach();
+}
+
+void GlobalOptimization::setCalib(Eigen::Matrix4d& T_BP)
+{
+    T_BP_ = T_BP;
+
+    Eigen::Matrix3d R_BP;
+    Eigen::Matrix<double, 3, 1> t_BP;
+    R_BP = T_BP_.block<3,3>(0,0);
+    t_BP = T_BP_.block<3,1>(0,3);
+
+    Eigen::Matrix3d R_PB;
+    Eigen::Matrix<double, 3, 1> t_PB;
+    R_PB = R_BP.transpose();
+    t_PB = -1.0*(R_PB * t_BP);
+
+    T_PB_.block<3,3>(0,0) = R_PB;
+    T_PB_.block<3,1>(0,3) = t_PB;
 }
 
 void GlobalOptimization::GPS2XYZ(double latitude, double longitude, double altitude, double* xyz)
@@ -46,8 +69,8 @@ void GlobalOptimization::inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quate
 
 
     Eigen::Quaterniond globalQ;
-    globalQ = WGPS_T_WVIO.block<3, 3>(0, 0) * OdomQ;
-    Eigen::Vector3d globalP = WGPS_T_WVIO.block<3, 3>(0, 0) * OdomP + WGPS_T_WVIO.block<3, 1>(0, 3);
+    globalQ = W_T_WVIO.block<3, 3>(0, 0) * OdomQ;
+    Eigen::Vector3d globalP = W_T_WVIO.block<3, 3>(0, 0) * OdomP + W_T_WVIO.block<3, 1>(0, 3);
     vector<double> globalPose{globalP.x(), globalP.y(), globalP.z(),
                               globalQ.w(), globalQ.x(), globalQ.y(), globalQ.z()};
     globalPoseMap[t] = globalPose;
@@ -76,25 +99,39 @@ void GlobalOptimization::getGlobalOdom(Eigen::Vector3d &odomP, Eigen::Quaternion
     odomQ = lastQ;
 }
 
-void GlobalOptimization::inputGPS(double t, double latitude, double longitude, double altitude, double posAccuracy)
+void GlobalOptimization::inputGP(double t, Eigen::Matrix<double, 3, 1> t_WP)
 {
-	double xyz[3];
-	GPS2XYZ(latitude, longitude, altitude, xyz);
-	vector<double> tmp{xyz[0], xyz[1], xyz[2], posAccuracy};
-    //printf("new gps: t: %f x: %f y: %f z:%f \n", t, tmp[0], tmp[1], tmp[2]);
-	GPSPositionMap[t] = tmp;
+    //double xyz[3];
+    //GPS2XYZ(latitude, longitude, altitude, xyz);
+    Eigen::Matrix<double, 3, 1> t_WB;
+
+    Eigen::Matrix<double, 3, 1> W_t_PB;
+    Eigen::Matrix3d last_R_WB;
+    last_R_WB = lastQ.normalized().toRotationMatrix();
+    Eigen::Matrix3d R_WP;
+    R_WP = last_R_WB * T_BP_.block<3,3>(0,0);
+
+    W_t_PB = R_WP * T_PB_.block<3,1>(0,3);
+
+    t_WB = t_WP + W_t_PB;
+
+    vector<double> tmp{t_WB(0,0), t_WB(1,0), t_WB(2,0), global_position_meas_square_root_cov_};
+    printf("new gp: t: %f x: %f y: %f z:%f \n", t, tmp[0], tmp[1], tmp[2]);
+    globalPositionMap[t] = tmp;
     newGPS = true;
 
 }
 
 void GlobalOptimization::optimize()
 {
+    printf("Optimization thread initialized. \n");
     while(true)
     {
         if(newGPS)
         {
             newGPS = false;
-            printf("global optimization\n");
+            optimization_cnt_++;
+            printf("global optimization: %d\n", optimization_cnt_);
             TicToc globalOptimizationTime;
 
             ceres::Problem problem;
@@ -186,8 +223,8 @@ void GlobalOptimization::optimize()
                 }
                 //gps factor
                 double t = iterVIO->first;
-                iterGPS = GPSPositionMap.find(t);
-                if (iterGPS != GPSPositionMap.end())
+                iterGPS = globalPositionMap.find(t);
+                if (iterGPS != globalPositionMap.end())
                 {
                     ceres::CostFunction* gps_function = TError::Create(iterGPS->second[0], iterGPS->second[1], 
                                                                        iterGPS->second[2], iterGPS->second[3]);
@@ -234,14 +271,14 @@ void GlobalOptimization::optimize()
             	    WGPS_T_body.block<3, 3>(0, 0) = Eigen::Quaterniond(globalPose[3], globalPose[4], 
             	                                                        globalPose[5], globalPose[6]).toRotationMatrix();
             	    WGPS_T_body.block<3, 1>(0, 3) = Eigen::Vector3d(globalPose[0], globalPose[1], globalPose[2]);
-            	    WGPS_T_WVIO = WGPS_T_body * WVIO_T_body.inverse();
+                    W_T_WVIO = WGPS_T_body * WVIO_T_body.inverse();
             	}
             }
             updateGlobalPath();
             //printf("global time %f \n", globalOptimizationTime.toc());
             mPoseMap.unlock();
         }
-        std::chrono::milliseconds dura(2000);
+        std::chrono::milliseconds dura(5);
         std::this_thread::sleep_for(dura);
     }
 	return;

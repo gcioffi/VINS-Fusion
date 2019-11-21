@@ -9,10 +9,13 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
+  geometry_msgs
   std_msgs
+  cv_bridge
 )
 
 find_package(Ceres REQUIRED)
+find_package(OpenCV REQUIRED)
 
 add_subdirectory(./ThirdParty/GeographicLib/)
 
@@ -30,4 +33,5 @@ add_executable(global_fusion_node
 	src/globalOptNode.cpp
 	src/globalOpt.cpp)
 
-target_link_libraries(global_fusion_node ${catkin_LIBRARIES} ${CERES_LIBRARIES} libGeographiccc) 
+target_link_libraries(global_fusion_node ${catkin_LIBRARIES}
+    ${OpenCV_LIBS} ${CERES_LIBRARIES} libGeographiccc)

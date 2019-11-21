@@ -15,6 +15,7 @@
 #include <iostream>
 #include <mutex>
 #include <thread>
+#include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/Dense>
 #include <eigen3/Eigen/Geometry>
 #include <ceres/ceres.h>
@@ -30,7 +31,8 @@ class GlobalOptimization
 public:
 	GlobalOptimization();
 	~GlobalOptimization();
-	void inputGPS(double t, double latitude, double longitude, double altitude, double posAccuracy);
+    void setCalib(Eigen::Matrix4d& T_BP);
+    void inputGP(double t, Eigen::Vector3d position);
 	void inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quaterniond OdomQ);
 	void getGlobalOdom(Eigen::Vector3d &odomP, Eigen::Quaterniond &odomQ);
 	nav_msgs::Path global_path;
@@ -43,14 +45,19 @@ private:
 	// format t, tx,ty,tz,qw,qx,qy,qz
 	map<double, vector<double>> localPoseMap;
 	map<double, vector<double>> globalPoseMap;
-	map<double, vector<double>> GPSPositionMap;
+    map<double, vector<double>> globalPositionMap;
 	bool initGPS;
 	bool newGPS;
 	GeographicLib::LocalCartesian geoConverter;
 	std::mutex mPoseMap;
-	Eigen::Matrix4d WGPS_T_WVIO;
+    Eigen::Matrix4d W_T_WVIO;
 	Eigen::Vector3d lastP;
 	Eigen::Quaterniond lastQ;
 	std::thread threadOpt;
+
+    Eigen::Matrix4d T_BP_;
+    Eigen::Matrix4d T_PB_;
+    double global_position_meas_square_root_cov_ = 0.1;
+    int optimization_cnt_ = 0;
 
 };

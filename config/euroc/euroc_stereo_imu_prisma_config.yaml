@@ -1,0 +1,13 @@
+%YAML:1.0
+
+# Sensor extrinsics wrt. the body-frame. This is the transformation of the
+# tracking prima to the body frame.
+global_position_topic: "/leica/position"
+body_T_p: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [1.0, 0.0, 0.0,  7.48903e-02,
+          0.0, 1.0, 0.0, -1.84772e-02,
+          0.0, 0.0, 1.0, -1.20209e-01,
+          0.0, 0.0, 0.0,  1.0]

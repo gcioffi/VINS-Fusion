@@ -16,11 +16,11 @@ GlobalOptimization::GlobalOptimization()
 {
 	initGPS = false;
     newGPS = false;
-    //W_T_WVIO = Eigen::Matrix4d::Identity();
-    W_T_WVIO << -0.38251987,  0.34100881, -0.85871505, 4.688319,
+    W_T_WVIO = Eigen::Matrix4d::Identity();
+    /*W_T_WVIO << -0.38251987,  0.34100881, -0.85871505, 4.688319,
                  0.16546774,  0.93965641,  0.29944324, -1.786938,
                  0.90900989, -0.02754666, -0.4158632, 0.783338,
-                 0.0, 0.0, 0.0, 1.0;
+                 0.0, 0.0, 0.0, 1.0;*/
 
     threadOpt = std::thread(&GlobalOptimization::optimize, this);
 }
@@ -103,7 +103,7 @@ void GlobalOptimization::inputGP(double t, Eigen::Matrix<double, 3, 1> t_WP)
 {
     //double xyz[3];
     //GPS2XYZ(latitude, longitude, altitude, xyz);
-    Eigen::Matrix<double, 3, 1> t_WB;
+    /*Eigen::Matrix<double, 3, 1> t_WB;
 
     Eigen::Matrix<double, 3, 1> W_t_PB;
     Eigen::Matrix3d last_R_WB;
@@ -116,7 +116,9 @@ void GlobalOptimization::inputGP(double t, Eigen::Matrix<double, 3, 1> t_WP)
     t_WB = t_WP + W_t_PB;
 
     vector<double> tmp{t_WB(0,0), t_WB(1,0), t_WB(2,0), global_position_meas_square_root_cov_};
-    printf("new gp: t: %f x: %f y: %f z:%f \n", t, tmp[0], tmp[1], tmp[2]);
+    printf("new gp: t: %f x: %f y: %f z:%f \n", t, tmp[0], tmp[1], tmp[2]);*/
+
+    vector<double> tmp{t_WP(0,0), t_WP(1,0), t_WP(2,0), global_position_meas_square_root_cov_};
     globalPositionMap[t] = tmp;
     newGPS = true;
 
@@ -190,7 +192,7 @@ void GlobalOptimization::optimize()
 
                     ceres::CostFunction* vio_function = RelativeRTError::Create(iPj.x(), iPj.y(), iPj.z(),
                                                                                 iQj.w(), iQj.x(), iQj.y(), iQj.z(),
-                                                                                0.1, 0.01);
+                                                                                0.1, 0.001);
                     problem.AddResidualBlock(vio_function, NULL, q_array[i], t_array[i], q_array[i+1], t_array[i+1]);
 
                     /*

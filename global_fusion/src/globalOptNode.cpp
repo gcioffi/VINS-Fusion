@@ -12,6 +12,7 @@
 #include "ros/ros.h"
 #include "globalOpt.h"
 #include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
@@ -31,7 +32,7 @@ GlobalOptimization globalEstimator;
 ros::Publisher pub_global_odometry, pub_global_path, pub_car;
 nav_msgs::Path *global_path;
 double last_vio_t = -1;
-std::queue<geometry_msgs::PointStampedPtr> globalPosQueue;
+std::queue<geometry_msgs::PoseStampedPtr> globalPosQueue;
 std::mutex m_buf;
 
 /*void publish_car_model(double t, Eigen::Vector3d t_w_car, Eigen::Quaterniond q_w_car)
@@ -96,7 +97,7 @@ void readParameters(std::string config_file, std::string& topic, Eigen::Matrix4d
     cv::cv2eigen(cv_T, T_BP);
 }
 
-void leica_callback(const geometry_msgs::PointStampedPtr &global_pos_msg)
+void leica_callback(const geometry_msgs::PoseStampedPtr &global_pos_msg)
 {
     //printf("gps_callback! \n");
 
@@ -112,18 +113,19 @@ void leica_callback(const geometry_msgs::PointStampedPtr &global_pos_msg)
 void vicon_callback(const geometry_msgs::TransformStampedPtr &global_pos_msg)
 {
     //printf("gps_callback! \n");
-    geometry_msgs::PointStampedPtr msg;
+    geometry_msgs::PoseStampedPtr msg;
     msg->header = global_pos_msg->header;
-    msg->point.x = global_pos_msg->transform.translation.x;
-    msg->point.y = global_pos_msg->transform.translation.y;
-    msg->point.z = global_pos_msg->transform.translation.z;
+    msg->pose.position.x = global_pos_msg->transform.translation.x;
+    msg->pose.position.y = global_pos_msg->transform.translation.y;
+    msg->pose.position.z = global_pos_msg->transform.translation.z;
 
     m_buf.lock();
     globalPosQueue.push(msg);
     m_buf.unlock();
 }
 
-void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
+//void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
+void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg, std::size_t* vio_cnt)
 {
     //printf("vio_callback! \n");
     double t = pose_msg->header.stamp.toSec();
@@ -134,17 +136,30 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
     vio_q.x() = pose_msg->pose.pose.orientation.x;
     vio_q.y() = pose_msg->pose.pose.orientation.y;
     vio_q.z() = pose_msg->pose.pose.orientation.z;
-    globalEstimator.inputOdom(t, vio_t, vio_q);
+    //globalEstimator.inputOdom(t, vio_t, vio_q);
+
+    // Test
+    /*Eigen::Vector3d w_t = Eigen::Vector3d(4.688319, -1.786938, 0.783338);
+    Eigen::Quaterniond w_q;
+    w_q.x() = -0.153029;
+    w_q.y() = -0.827283;
+    w_q.z() = -0.082152;
+    w_q.w() = 0.534108;
+
+    vio_q = w_q * vio_q;
+    vio_t = w_q.normalized().toRotationMatrix() * vio_t + w_t;
+    globalEstimator.inputOdom(t, vio_t, vio_q);*/
+    //end test
 
 
     m_buf.lock();
     while(!globalPosQueue.empty())
     {
-        geometry_msgs::PointStampedPtr gp_msg = globalPosQueue.front();
+        geometry_msgs::PoseStampedPtr gp_msg = globalPosQueue.front();
         double gp_t = gp_msg->header.stamp.toSec();
         //printf("vio t: %f, gp t: %f \n", t, gp_t);
         // 5ms sync tolerance
-        if(gp_t >= t - 0.005 && gp_t <= t + 0.005)
+        if(gp_t >= t - 0.002 && gp_t <= t + 0.002)
         {
             printf("vio t: %f, gp t: %f \n", t, gp_t);
             //printf("receive GPS with timestamp %f\n", GPS_msg->header.stamp.toSec());
@@ -165,17 +180,17 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
             //std::cout << "Im here 2\n";
             // end debug
 
-            Eigen::Matrix<double, 3, 1> global_pos_measurement(gp_msg->point.x,
-                                                               gp_msg->point.y,
-                                                               gp_msg->point.z);
+            Eigen::Matrix<double, 3, 1> global_pos_measurement(gp_msg->pose.position.x,
+                                                               gp_msg->pose.position.y,
+                                                               gp_msg->pose.position.z);
 
             globalEstimator.inputGP(t, global_pos_measurement);
             globalPosQueue.pop();
             break;
         }
-        else if(gp_t < t - 0.005)
+        else if(gp_t < t - 0.002)
             globalPosQueue.pop();
-        else if(gp_t > t + 0.005)
+        else if(gp_t > t + 0.002)
             break;
     }
     m_buf.unlock();
@@ -199,20 +214,23 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
     pub_global_path.publish(*global_path);
     //publish_car_model(t, global_t, global_q);
 
-
-    // write result to file
-    std::ofstream foutC("/home/rpg/stamped_traj_estimate.txt", ios::app);
-    foutC.setf(ios::fixed, ios::floatfield);
-    foutC.precision(20);
-    foutC << pose_msg->header.stamp.toSec() << " ";
-    foutC << global_t.x() << " "
-          << global_t.y() << " "
-          << global_t.z() << " "
-          << global_q.x() << " "
-          << global_q.y() << " "
-          << global_q.z() << " "
-          << global_q.w() << endl;
-    foutC.close();
+    *vio_cnt += 1;
+    if(*vio_cnt > 5)
+    {
+        // write result to file
+        std::ofstream foutC("/home/rpg/stamped_traj_estimate.txt", ios::app);
+        foutC.setf(ios::fixed, ios::floatfield);
+        foutC.precision(20);
+        foutC << pose_msg->header.stamp.toSec() << " ";
+        foutC << global_t.x() << " "
+              << global_t.y() << " "
+              << global_t.z() << " "
+              << global_q.x() << " "
+              << global_q.y() << " "
+              << global_q.z() << " "
+              << global_q.w() << endl;
+        foutC.close();
+     }
 }
 
 int main(int argc, char **argv)
@@ -257,9 +275,13 @@ int main(int argc, char **argv)
         std::cout << "Unknown topic. \n";
     }*/
 
-    ros::Subscriber sub_GP = n.subscribe("/leica/position", 1, leica_callback);
+    ros::Subscriber sub_GP = n.subscribe("/ground_truth", 1, leica_callback);
 
-    ros::Subscriber sub_vio = n.subscribe("/vins_estimator/odometry", 1, vio_callback);
+    //ros::Subscriber sub_vio = n.subscribe("/vins_estimator/odometry", 1, vio_callback);
+    std::size_t vio_cnt = 0;
+    ros::Subscriber sub_vio = n.subscribe<nav_msgs::Odometry>
+            ("/vins_estimator/odometry", 1, boost::bind(&vio_callback, _1, &vio_cnt));
+
     pub_global_path = n.advertise<nav_msgs::Path>("global_path", 100);
     pub_global_odometry = n.advertise<nav_msgs::Odometry>("global_odometry", 100);
     //pub_car = n.advertise<visualization_msgs::MarkerArray>("car_model", 1000);

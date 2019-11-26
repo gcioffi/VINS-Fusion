@@ -35,6 +35,9 @@ public:
     void inputGP(double t, Eigen::Vector3d position);
 	void inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quaterniond OdomQ);
 	void getGlobalOdom(Eigen::Vector3d &odomP, Eigen::Quaterniond &odomQ);
+    int getOptimizationId(){
+        return optimization_cnt_;
+    }
 	nav_msgs::Path global_path;
 
 private:

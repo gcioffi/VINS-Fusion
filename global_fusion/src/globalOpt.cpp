@@ -17,10 +17,6 @@ GlobalOptimization::GlobalOptimization()
 	initGPS = false;
     newGPS = false;
     W_T_WVIO = Eigen::Matrix4d::Identity();
-    /*W_T_WVIO << -0.38251987,  0.34100881, -0.85871505, 4.688319,
-                 0.16546774,  0.93965641,  0.29944324, -1.786938,
-                 0.90900989, -0.02754666, -0.4158632, 0.783338,
-                 0.0, 0.0, 0.0, 1.0;*/
 
     threadOpt = std::thread(&GlobalOptimization::optimize, this);
 }
@@ -121,7 +117,6 @@ void GlobalOptimization::inputGP(double t, Eigen::Matrix<double, 3, 1> t_WP)
     vector<double> tmp{t_WP(0,0), t_WP(1,0), t_WP(2,0), global_position_meas_square_root_cov_};
     globalPositionMap[t] = tmp;
     newGPS = true;
-
 }
 
 void GlobalOptimization::optimize()
@@ -141,7 +136,7 @@ void GlobalOptimization::optimize()
             options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
             //options.minimizer_progress_to_stdout = true;
             //options.max_solver_time_in_seconds = SOLVER_TIME * 3;
-            options.max_num_iterations = 5;
+            options.max_num_iterations = 5;//3;
             ceres::Solver::Summary summary;
             ceres::LossFunction *loss_function;
             loss_function = new ceres::HuberLoss(1.0);
@@ -192,7 +187,7 @@ void GlobalOptimization::optimize()
 
                     ceres::CostFunction* vio_function = RelativeRTError::Create(iPj.x(), iPj.y(), iPj.z(),
                                                                                 iQj.w(), iQj.x(), iQj.y(), iQj.z(),
-                                                                                0.1, 0.001);
+                                                                                0.1, 0.01);
                     problem.AddResidualBlock(vio_function, NULL, q_array[i], t_array[i], q_array[i+1], t_array[i+1]);
 
                     /*
@@ -273,6 +268,7 @@ void GlobalOptimization::optimize()
             	    WGPS_T_body.block<3, 3>(0, 0) = Eigen::Quaterniond(globalPose[3], globalPose[4], 
             	                                                        globalPose[5], globalPose[6]).toRotationMatrix();
             	    WGPS_T_body.block<3, 1>(0, 3) = Eigen::Vector3d(globalPose[0], globalPose[1], globalPose[2]);
+
                     W_T_WVIO = WGPS_T_body * WVIO_T_body.inverse();
             	}
             }

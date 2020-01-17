@@ -24,6 +24,7 @@
 #include <opencv2/core/eigen.hpp>
 #include <iostream>
 #include <stdio.h>
+#include <string>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <fstream>
@@ -37,7 +38,7 @@ double last_vio_t = -1;
 double last_gp_t = -1;
 std::queue<geometry_msgs::PoseStamped> globalPosQueue;
 std::queue<geometry_msgs::PoseStamped> estimatedPoseQueue;
-std::mutex m_buf;
+std::vector<bool> isKeyframe;
 double gp_rate = 1.5; // Rate with which gp measurements are inserted in the optimization.
 std::size_t gp_cnt = 0;
 bool global_optimization_started = false;
@@ -104,9 +105,7 @@ void loadGroundTruth(std::string& filename, int first_meas_id)
         msg.pose.orientation.z = qz;
         msg.pose.orientation.w = qw;
 
-        m_buf.lock();
         globalPosQueue.push(msg);
-        m_buf.unlock();
 
         // Debug
         /*std::cout << "id, stamp, x, y, z, qx, qy, qz, qw\n";
@@ -132,7 +131,7 @@ void loadPoseEstimates(std::string& filename)
     std::ifstream fs(filename.c_str());
     if(!fs.is_open())
     {
-      std::cout << "Could not open ground truth file: " << filename << "\n";
+      std::cout << "Could not open pose estimates file: " << filename << "\n";
     }
 
     // add all gt positions
@@ -164,9 +163,7 @@ void loadPoseEstimates(std::string& filename)
       msg.pose.orientation.z = qz;
       msg.pose.orientation.w = qw;
 
-      m_buf.lock();
       estimatedPoseQueue.push(msg);
-      m_buf.unlock();
 
       // Debug
       /*std::cout << "id, stamp, x, y, z, qx, qy, qz, qw\n";
@@ -184,6 +181,42 @@ void loadPoseEstimates(std::string& filename)
     }
 
     std::cout << "Loaded " << estimatedPoseQueue.size() << " estimates.\n";
+}
+
+void loadFrameStatus(std::string& filename)
+{
+    std::ifstream fs(filename.c_str());
+    if(!fs.is_open())
+    {
+      std::cout << "Could not open status file: " << filename << "\n";
+    }
+
+    // add all gt positions
+    size_t n = 0;
+
+    while(fs.good() && !fs.eof())
+    {
+      if(fs.peek() == '#') // skip comments
+        fs.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+      int id;
+      double stamp;
+      std::string vio_status;
+      std::string tracking_quality;
+      std::string frame_status;
+      fs >> id >> stamp >> vio_status >> tracking_quality >> frame_status;
+
+      if(frame_status == "KF")
+      {
+          isKeyframe.push_back(true);
+      }
+      else
+      {
+          isKeyframe.push_back(false);
+      }
+
+      n++;
+    }
 }
 
 void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_fn)
@@ -211,7 +244,7 @@ void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_
         // 1ms sync tolerance
         if(gp_t >= t - 0.001 && gp_t <= t + 0.001)
         {
-            if(gp_t >= (last_gp_t + 1.0/gp_rate))
+            /*if(gp_t >= (last_gp_t + 1.0/gp_rate))
             {
                 //printf("vio t: %f, gp t: %f \n", t, gp_t);
                 Eigen::Matrix<double, 3, 1> global_pos_measurement(gp_msg.pose.position.x,
@@ -223,7 +256,16 @@ void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_
 
                 last_gp_t = gp_t;
                 gp_cnt++;
-            }
+            }*/
+            Eigen::Matrix<double, 3, 1> global_pos_measurement(gp_msg.pose.position.x,
+                                                               gp_msg.pose.position.y,
+                                                               gp_msg.pose.position.z);
+
+            globalEstimator.inputGP(t, global_pos_measurement);
+            globalPosQueue.pop();
+
+            gp_cnt++;
+
             break;
         }
         else if(gp_t < t - 0.001)
@@ -231,7 +273,6 @@ void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_
         else if(gp_t > t + 0.001)
             break;
     }
-    //m_buf.unlock();
 
     if (!global_optimization_started)
     {
@@ -311,6 +352,11 @@ int main(int argc, char **argv)
                 "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
                 "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");
     loadPoseEstimates(pe_fn);
+
+    /*std::string status_fn(
+                "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
+                "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");
+    loadFrameStatus(pe_fn);*/
 
     std::string global_pe_fn("/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
                              "cvpr2020_comparison/" + sequence_id +

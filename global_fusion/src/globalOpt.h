@@ -60,7 +60,7 @@ private:
 
     Eigen::Matrix4d T_BP_;
     Eigen::Matrix4d T_PB_;
-    double global_position_meas_square_root_cov_ = 0.1;
+    double global_position_meas_square_root_cov_ = 1e-6;
     int optimization_cnt_ = 0;
 
 };

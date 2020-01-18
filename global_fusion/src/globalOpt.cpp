@@ -127,8 +127,6 @@ void GlobalOptimization::optimize()
         if(newGPS)
         {
             newGPS = false;
-            optimization_cnt_++;
-            printf("global optimization: %d\n", optimization_cnt_);
             TicToc globalOptimizationTime;
 
             ceres::Problem problem;
@@ -272,8 +270,12 @@ void GlobalOptimization::optimize()
                     W_T_WVIO = WGPS_T_body * WVIO_T_body.inverse();
             	}
             }
-            updateGlobalPath();
+            //updateGlobalPath();
             //printf("global time %f \n", globalOptimizationTime.toc());
+
+            optimization_cnt_++;
+            printf("global optimization: %d\n", optimization_cnt_);
+
             mPoseMap.unlock();
         }
         std::chrono::milliseconds dura(5);

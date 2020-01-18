@@ -39,9 +39,10 @@ double last_gp_t = -1;
 std::queue<geometry_msgs::PoseStamped> globalPosQueue;
 std::queue<geometry_msgs::PoseStamped> estimatedPoseQueue;
 std::vector<bool> isKeyframe;
-double gp_rate = 1.5; // Rate with which gp measurements are inserted in the optimization.
+//double gp_rate = 1.5; // Rate with which gp measurements are inserted in the optimization.
 std::size_t gp_cnt = 0;
 bool global_optimization_started = false;
+int optimization_cnt = 0;
 
 void readParameters(std::string config_file, std::string& sequence, int &first_gp_meas)
 {
@@ -343,13 +344,19 @@ int main(int argc, char **argv)
     //global_path = &globalEstimator.global_path;
 
     // Load gt.
-    std::string gt_fn(
+    /*std::string gt_fn(
                 "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
+                "cvpr2020_comparison/" + sequence_id + "/groundtruth.txt");*/
+    std::string gt_fn(
+                "/home/giovanni/vins_ws/src/VINS-Fusion/"
                 "cvpr2020_comparison/" + sequence_id + "/groundtruth.txt");
     loadGroundTruth(gt_fn, first_gp_meas);
 
-    std::string pe_fn(
+    /*std::string pe_fn(
                 "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
+                "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");*/
+    std::string pe_fn(
+                "/home/giovanni/vins_ws/src/VINS-Fusion/"
                 "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");
     loadPoseEstimates(pe_fn);
 
@@ -358,7 +365,10 @@ int main(int argc, char **argv)
                 "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");
     loadFrameStatus(pe_fn);*/
 
-    std::string global_pe_fn("/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
+    /*std::string global_pe_fn("/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
+                             "cvpr2020_comparison/" + sequence_id +
+                             "/stamped_traj_estimate.txt");*/
+    std::string global_pe_fn("/home/giovanni/vins_ws/src/VINS-Fusion/"
                              "cvpr2020_comparison/" + sequence_id +
                              "/stamped_traj_estimate.txt");
     // Remove existing file
@@ -382,8 +392,14 @@ int main(int argc, char **argv)
         estimatedPoseQueue.pop();
 
         // Wait optimization is complete.
-        std::chrono::milliseconds dura(10);
-        std::this_thread::sleep_for(dura);
+        //std::chrono::milliseconds dura(10);
+        //std::this_thread::sleep_for(dura);
+
+        optimization_cnt++;
+        while(globalEstimator.getOptimizationId() < optimization_cnt)
+        {
+            continue;
+        }
     }
 
     std::cout << "Num. gp fused: " << gp_cnt << "\n";

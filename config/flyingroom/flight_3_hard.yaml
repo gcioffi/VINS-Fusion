@@ -1,0 +1,16 @@
+%YAML:1.0
+
+sequence: "flyingroom_flight_3_hard"
+first_gp_meas: 0
+
+# World(W) to VIO(V) frame alignement computed in vins-fusion_comparison.ipynb
+t_wv_x: 1.56202897
+t_wv_y: 0.63170613
+t_wv_z: 1.23630736
+q_wv_x: -0.022
+q_wv_y: 0.010
+q_wv_z: -0.554
+q_wv_w: 0.832
+
+# Timestamp first estimate in tightly-coupled approach
+ts_first_estimate: 1572967888.8534836769

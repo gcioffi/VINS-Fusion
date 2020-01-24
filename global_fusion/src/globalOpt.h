@@ -32,11 +32,20 @@ public:
 	GlobalOptimization();
 	~GlobalOptimization();
     void setCalib(Eigen::Matrix4d& T_BP);
+    void set_T_WVIO(Eigen::Vector3d& t_WVIO, Eigen::Quaterniond& q_WVIO);
     void inputGP(double t, Eigen::Vector3d position);
 	void inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quaterniond OdomQ);
-	void getGlobalOdom(Eigen::Vector3d &odomP, Eigen::Quaterniond &odomQ);
+    void getGlobalOdom(Eigen::Vector3d &odomP, Eigen::Quaterniond &odomQ, double& last_ts);
     int getOptimizationId(){
         return optimization_cnt_;
+    }
+    void get_T_WVIO(Eigen::Vector3d& t_WVIO, Eigen::Quaterniond& q_WVIO)
+    {
+        t_WVIO = W_T_WVIO.block<3,1>(0,3);
+
+        Eigen::Matrix3d R_WVIO = W_T_WVIO.block<3,3>(0,0);
+        Eigen::Quaterniond q(R_WVIO);
+        q_WVIO = q;
     }
 	nav_msgs::Path global_path;
 
@@ -50,17 +59,18 @@ private:
 	map<double, vector<double>> globalPoseMap;
     map<double, vector<double>> globalPositionMap;
 	bool initGPS;
-	bool newGPS;
+    bool newGP;
 	GeographicLib::LocalCartesian geoConverter;
 	std::mutex mPoseMap;
     Eigen::Matrix4d W_T_WVIO;
 	Eigen::Vector3d lastP;
 	Eigen::Quaterniond lastQ;
+    double lastTimestamp;
 	std::thread threadOpt;
 
     Eigen::Matrix4d T_BP_;
     Eigen::Matrix4d T_PB_;
-    double global_position_meas_square_root_cov_ = 1e-6;
+    double global_position_meas_square_root_cov_ = 0.001;
     int optimization_cnt_ = 0;
 
 };

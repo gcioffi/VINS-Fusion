@@ -2,3 +2,15 @@
 
 sequence: "V_101"
 first_gp_meas: 0
+
+# World(W) to VIO(V) frame alignement computed in vins-fusion_comparison.ipynb
+t_wv_x: 0.878703
+t_wv_y: 2.142317
+t_wv_z: 0.947242
+q_wv_x: 0.004
+q_wv_y: -0.023
+q_wv_z: 0.997
+q_wv_w: -0.074
+
+# Timestamp first estimate in tightly-coupled approach
+ts_first_estimate: 1403715284.7121429443

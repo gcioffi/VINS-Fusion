@@ -2,3 +2,15 @@
 
 sequence: "MH_05"
 first_gp_meas: 0
+
+# World(W) to VIO(V) frame alignement computed in vins-fusion_comparison.ipynb
+t_wv_x: 4.461482
+t_wv_y: -1.680731
+t_wv_z: 0.579175
+q_wv_x: 0.004
+q_wv_y: -0.004
+q_wv_z: 0.905
+q_wv_w: -0.425
+
+# Timestamp first estimate in tightly-coupled approach
+ts_first_estimate: 1403638524.7278296947

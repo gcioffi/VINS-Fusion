@@ -40,11 +40,13 @@ std::queue<geometry_msgs::PoseStamped> globalPosQueue;
 std::queue<geometry_msgs::PoseStamped> estimatedPoseQueue;
 std::vector<bool> isKeyframe;
 //double gp_rate = 1.5; // Rate with which gp measurements are inserted in the optimization.
-std::size_t gp_cnt = 0;
+//std::size_t gp_cnt = 0;
 bool global_optimization_started = false;
 int optimization_cnt = 0;
 
-void readParameters(std::string config_file, std::string& sequence, int &first_gp_meas)
+void readParameters(std::string config_file, std::string& sequence, int &first_gp_meas,
+                    Eigen::Vector3d& t_wv, Eigen::Quaterniond& q_wv,
+                    double& ts_first_estimate)
 {
     FILE *fh = fopen(config_file.c_str(),"r");
     if(fh == NULL){
@@ -62,6 +64,18 @@ void readParameters(std::string config_file, std::string& sequence, int &first_g
 
     fsSettings["sequence"] >> sequence;
     first_gp_meas = fsSettings["first_gp_meas"];
+
+    t_wv.x() = fsSettings["t_wv_x"];
+    t_wv.y() = fsSettings["t_wv_y"];
+    t_wv.z() = fsSettings["t_wv_z"];
+
+    q_wv.x() = fsSettings["q_wv_x"];
+    q_wv.y() = fsSettings["q_wv_y"];
+    q_wv.z() = fsSettings["q_wv_z"];
+    q_wv.w() = fsSettings["q_wv_w"];
+
+    ts_first_estimate = fsSettings["ts_first_estimate"];
+
 }
 
 void loadGroundTruth(std::string& filename, int first_meas_id)
@@ -73,9 +87,9 @@ void loadGroundTruth(std::string& filename, int first_meas_id)
     }
 
     // add all gt positions
-    size_t n = 0;
+    //size_t n = 0;
 
-    while(fs.good() && !fs.eof())
+    while(fs.good())
     {
       if(fs.peek() == '#') // skip comments
         fs.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
@@ -84,43 +98,46 @@ void loadGroundTruth(std::string& filename, int first_meas_id)
       double stamp, x, y, z, qx, qy, qz, qw;
       fs >> id >> stamp >> x >> y >> z >> qx >> qy >> qz >> qw;
 
-      if(id >= first_meas_id)
+      if(!fs.eof())
       {
-        const Eigen::Vector3d position(x, y, z);
-        const Eigen::Quaterniond orientation(qw, qx, qy, qz);
+          if(id >= first_meas_id)
+          {
+            const Eigen::Vector3d position(x, y, z);
+            const Eigen::Quaterniond orientation(qw, qx, qy, qz);
 
-        geometry_msgs::PoseStamped msg;
+            geometry_msgs::PoseStamped msg;
 
-        std_msgs::Header msg_header;
-        ros::Time t;
-        //msg_header.seq = n;
-        msg_header.stamp = t.fromSec(stamp);
-        //msg_header.frame_id = "";
+            std_msgs::Header msg_header;
+            ros::Time t;
+            //msg_header.seq = n;
+            msg_header.stamp = t.fromSec(stamp);
+            //msg_header.frame_id = "";
 
-        msg.header = msg_header;
-        msg.pose.position.x = x;
-        msg.pose.position.y = y;
-        msg.pose.position.z = z;
-        msg.pose.orientation.x = qx;
-        msg.pose.orientation.y = qy;
-        msg.pose.orientation.z = qz;
-        msg.pose.orientation.w = qw;
+            msg.header = msg_header;
+            msg.pose.position.x = x;
+            msg.pose.position.y = y;
+            msg.pose.position.z = z;
+            msg.pose.orientation.x = qx;
+            msg.pose.orientation.y = qy;
+            msg.pose.orientation.z = qz;
+            msg.pose.orientation.w = qw;
 
-        globalPosQueue.push(msg);
+            globalPosQueue.push(msg);
 
-        // Debug
-        /*std::cout << "id, stamp, x, y, z, qx, qy, qz, qw\n";
-        std::cout << id << ", "
-                  << stamp << ", "
-                  << x << ", "
-                  << y << ", "
-                  << z << ", "
-                  << qx << ", "
-                  << qy << ", "
-                  << qz << ", "
-                  << qw << "\n";*/
-        // end Debug
-        ++n;
+            // Debug
+            /*std::cout << "id, stamp, x, y, z, qx, qy, qz, qw\n";
+            std::cout << id << ", "
+                      << stamp << ", "
+                      << x << ", "
+                      << y << ", "
+                      << z << ", "
+                      << qx << ", "
+                      << qy << ", "
+                      << qz << ", "
+                      << qw << "\n";
+            ++n;*/
+            // end Debug
+          }
       }
     }
 
@@ -135,52 +152,58 @@ void loadPoseEstimates(std::string& filename)
       std::cout << "Could not open pose estimates file: " << filename << "\n";
     }
 
-    // add all gt positions
-    size_t n = 0;
+    // add all pe positions
+    //size_t n = 0;
 
-    while(fs.good() && !fs.eof())
+    while(fs.good())
     {
       if(fs.peek() == '#') // skip comments
         fs.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
+      int id;
       double stamp, x, y, z, qx, qy, qz, qw;
-      fs >> stamp >> x >> y >> z >> qx >> qy >> qz >> qw;
+      fs >> id >> stamp >> x >> y >> z >> qx >> qy >> qz >> qw;
 
-      const Eigen::Vector3d position(x, y, z);
-      const Eigen::Quaterniond orientation(qw, qx, qy, qz);
+      if(!fs.eof())
+      {
+          const Eigen::Vector3d position(x, y, z);
+          const Eigen::Quaterniond orientation(qw, qx, qy, qz);
 
-      geometry_msgs::PoseStamped msg;
+          geometry_msgs::PoseStamped msg;
 
-      std_msgs::Header msg_header;
-      ros::Time t;
-      msg_header.stamp = t.fromSec(stamp);
+          std_msgs::Header msg_header;
+          ros::Time t;
+          msg_header.stamp = t.fromSec(stamp);
 
-      msg.header = msg_header;
-      msg.pose.position.x = x;
-      msg.pose.position.y = y;
-      msg.pose.position.z = z;
-      msg.pose.orientation.x = qx;
-      msg.pose.orientation.y = qy;
-      msg.pose.orientation.z = qz;
-      msg.pose.orientation.w = qw;
+          msg.header = msg_header;
+          msg.pose.position.x = x;
+          msg.pose.position.y = y;
+          msg.pose.position.z = z;
+          msg.pose.orientation.x = qx;
+          msg.pose.orientation.y = qy;
+          msg.pose.orientation.z = qz;
+          msg.pose.orientation.w = qw;
 
-      estimatedPoseQueue.push(msg);
+          estimatedPoseQueue.push(msg);
 
-      // Debug
-      /*std::cout << "id, stamp, x, y, z, qx, qy, qz, qw\n";
-      std::cout << id << ", "
-                << stamp << ", "
-                << x << ", "
-                << y << ", "
-                << z << ", "
-                << qx << ", "
-                << qy << ", "
-                << qz << ", "
-                << qw << "\n";*/
-      // end Debug
-      ++n;
+          // Debug
+          /*std::cout << "id, stamp, x, y, z, qx, qy, qz, qw\n";
+          std::cout << id << ", "
+                    << stamp << ", "
+                    << x << ", "
+                    << y << ", "
+                    << z << ", "
+                    << qx << ", "
+                    << qy << ", "
+                    << qz << ", "
+                    << qw << "\n";
+          ++n;
+          std::cout << "n: " << n << "\n";*/
+          // end Debug
+      }
     }
 
+    //std::cout << "n: " << n << "\n";
     std::cout << "Loaded " << estimatedPoseQueue.size() << " estimates.\n";
 }
 
@@ -220,7 +243,7 @@ void loadFrameStatus(std::string& filename)
     }
 }
 
-void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_fn)
+bool callback(const geometry_msgs::PoseStamped pose_msg)
 {
     //printf("vio_callback! \n");
     double t = pose_msg.header.stamp.toSec();
@@ -236,14 +259,21 @@ void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_
 
     globalEstimator.inputOdom(t, vio_t, vio_q);
 
+    // Sync tolerance.
+    // dt = 0.001[s], basically take only the gt measurement with timestamp corresponding
+    // to vio estimate.
+    //double dt = 0.001;
+    double dt = 0.005; // flyingroom dataset
+
+    bool new_global_meas_added = false;
+
     while(!globalPosQueue.empty())
     {
         geometry_msgs::PoseStamped gp_msg = globalPosQueue.front();
         double gp_t = gp_msg.header.stamp.toSec();
         //printf("vio t: %f, gp t: %f \n", t, gp_t);
 
-        // 1ms sync tolerance
-        if(gp_t >= t - 0.001 && gp_t <= t + 0.001)
+        if(gp_t >= t - dt && gp_t <= t + dt)
         {
             /*if(gp_t >= (last_gp_t + 1.0/gp_rate))
             {
@@ -265,17 +295,21 @@ void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_
             globalEstimator.inputGP(t, global_pos_measurement);
             globalPosQueue.pop();
 
-            gp_cnt++;
+            new_global_meas_added = true;
+
+            //gp_cnt++;
 
             break;
         }
-        else if(gp_t < t - 0.001)
+        else if(gp_t < t - dt)
             globalPosQueue.pop();
-        else if(gp_t > t + 0.001)
+        else if(gp_t > t + dt)
             break;
     }
 
-    if (!global_optimization_started)
+    return new_global_meas_added;
+
+    /*if (!global_optimization_started)
     {
         if(globalEstimator.getOptimizationId() > 0)
         {
@@ -289,7 +323,7 @@ void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_
         Eigen:: Quaterniond global_q;
         globalEstimator.getGlobalOdom(global_t, global_q);
 
-        /*nav_msgs::Odometry odometry;
+        nav_msgs::Odometry odometry;
         odometry.header = pose_msg->header;
         odometry.header.frame_id = "world";
         odometry.child_frame_id = "world";
@@ -301,7 +335,7 @@ void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_
         odometry.pose.pose.orientation.z = global_q.z();
         odometry.pose.pose.orientation.w = global_q.w();
         pub_global_odometry.publish(odometry);
-        pub_global_path.publish(*global_path);*/
+        pub_global_path.publish(*global_path);
 
         // write result to file
         std::ofstream foutC(global_pe_fn, ios::app);
@@ -316,7 +350,7 @@ void callback(const geometry_msgs::PoseStamped pose_msg, std::string& global_pe_
               << global_q.z() << " "
               << global_q.w() << endl;
         foutC.close();
-    }
+    }*/
 
 }
 
@@ -332,45 +366,71 @@ int main(int argc, char **argv)
     }
 
     std::string config_file = argv[1];
-    printf("global config_file: %s\n", argv[1]);
+    printf("Config file: %s\n", argv[1]);
 
-    // Global position measurements are provided as the position of B in world frame:
+    /// W: world frame.
+    /// VIO: VIO frame.
+    /// B: IMU body frame.
+    /// Global position measurements are provided as the position of B in world frame.
     std::string sequence_id;
     int first_gp_meas = 0;
-    readParameters(config_file, sequence_id, first_gp_meas);
+    // Used to align estimates to tightly coupled approach.
+    double ts_first_estimate = 0.0;
+    Eigen::Vector3d t_wvio;
+    Eigen::Quaterniond q_wvio;
+    readParameters(config_file,
+                   sequence_id,
+                   first_gp_meas,
+                   t_wvio,
+                   q_wvio,
+                   ts_first_estimate);
 
-    std::cout << "first id " << first_gp_meas << "\n";
+    // Some printing
+    std::cout << "First measurement " << first_gp_meas << "\n";
+
+    std::cout << "t_wv:\n";
+    std::cout << t_wvio << "\n";
+    std::cout << "q_wv:\n";
+    std::cout << q_wvio.x() << "\n";
+    std::cout << q_wvio.y() << "\n";
+    std::cout << q_wvio.z() << "\n";
+    std::cout << q_wvio.w() << "\n";
+
+    std::cout << "Timestamp first estimate: "
+              << std::setprecision(20) << ts_first_estimate << "\n";
+
+    globalEstimator.set_T_WVIO(t_wvio, q_wvio);
 
     //global_path = &globalEstimator.global_path;
 
     // Load gt.
-    /*std::string gt_fn(
-                "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
-                "cvpr2020_comparison/" + sequence_id + "/groundtruth.txt");*/
     std::string gt_fn(
-                "/home/giovanni/vins_ws/src/VINS-Fusion/"
+                "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
                 "cvpr2020_comparison/" + sequence_id + "/groundtruth.txt");
+    /*std::string gt_fn(
+                "/home/giovanni/vins_ws/src/VINS-Fusion/"
+                "cvpr2020_comparison/" + sequence_id + "/groundtruth.txt");*/
     loadGroundTruth(gt_fn, first_gp_meas);
 
-    /*std::string pe_fn(
+    std::string svo_fn(
                 "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
-                "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");*/
-    std::string pe_fn(
+                "cvpr2020_comparison/" + sequence_id + "/traj_estimate.txt");
+    /*std::string svo_fn(
                 "/home/giovanni/vins_ws/src/VINS-Fusion/"
-                "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");
-    loadPoseEstimates(pe_fn);
+                "cvpr2020_comparison/" + sequence_id + "/traj_estimate.txt");*/
+    loadPoseEstimates(svo_fn);
 
     /*std::string status_fn(
                 "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
                 "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");
     loadFrameStatus(pe_fn);*/
 
-    /*std::string global_pe_fn("/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
-                             "cvpr2020_comparison/" + sequence_id +
-                             "/stamped_traj_estimate.txt");*/
-    std::string global_pe_fn("/home/giovanni/vins_ws/src/VINS-Fusion/"
+    std::string global_pe_fn("/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
                              "cvpr2020_comparison/" + sequence_id +
                              "/stamped_traj_estimate.txt");
+    /*std::string global_pe_fn("/home/giovanni/vins_ws/src/VINS-Fusion/"
+                             "cvpr2020_comparison/" + sequence_id +
+                             "/stamped_traj_estimate.txt");*/
     // Remove existing file
     if(std::remove(global_pe_fn.c_str()) != 0)
     {
@@ -381,28 +441,82 @@ int main(int argc, char **argv)
         std::cout << "Previous existing file removed\n";
     }
 
-    // Compute initial T_W_Wvio_init
-    //Eigen::Matrix4d T_W_Wvio_init;
-    //compute_TW_Wvio_init(T_W_Wvio_init);
-
     // Simulated callback
+
     while(estimatedPoseQueue.size()>0)
     {
-        callback(estimatedPoseQueue.front(), global_pe_fn);
+        if(callback(estimatedPoseQueue.front()))
+        {
+            optimization_cnt++;
+        }
         estimatedPoseQueue.pop();
 
-        // Wait optimization is complete.
-        //std::chrono::milliseconds dura(10);
-        //std::this_thread::sleep_for(dura);
+        // Debug
+        /*std::cout<<"globalEstimator.getOptimizationId(): "
+                << globalEstimator.getOptimizationId()
+                << "\n";
+        std::cout<<"optimization_cnt: "
+                << optimization_cnt
+                << "\n";*/
+        // end debug
 
-        optimization_cnt++;
-        while(globalEstimator.getOptimizationId() < optimization_cnt)
+        while((globalEstimator.getOptimizationId() < optimization_cnt) &&
+              (estimatedPoseQueue.size()>0) &&
+              (globalPosQueue.size()>0))
         {
+            // Debug
+            /*std::cout<<"globalEstimator.getOptimizationId(): "
+                    << globalEstimator.getOptimizationId()
+                    << "\n";
+            std::cout<<"optimization_cnt: "
+                    << optimization_cnt
+                    << "\n";*/
+            // end debug
+
+            std::chrono::milliseconds dura(10);
+            std::this_thread::sleep_for(dura);
+
             continue;
+        }
+
+        // Write result to file
+        Eigen::Vector3d global_t;
+        Eigen:: Quaterniond global_q;
+        double timestamp;
+        globalEstimator.getGlobalOdom(global_t, global_q, timestamp);
+
+        if(timestamp >= ts_first_estimate)
+        {
+            std::ofstream foutC(global_pe_fn, ios::app);
+            foutC.setf(ios::fixed, ios::floatfield);
+            foutC.precision(20);
+            foutC << timestamp << " ";
+            foutC << global_t.x() << " "
+                  << global_t.y() << " "
+                  << global_t.z() << " "
+                  << global_q.x() << " "
+                  << global_q.y() << " "
+                  << global_q.z() << " "
+                  << global_q.w() << std::endl;
+            foutC.close();
         }
     }
 
-    std::cout << "Num. gp fused: " << gp_cnt << "\n";
+    std::cout << "Number of global position measurements fused: "
+              << globalEstimator.getOptimizationId() << "\n";
+
+    Eigen::Vector3d final_t_wvio;
+    Eigen::Quaterniond final_q_wvio;
+    globalEstimator.get_T_WVIO(final_t_wvio, final_q_wvio);
+
+    std::cout << "T_W_VIO \n";
+    std::cout << "t_W_VIO: \n";
+    std::cout << final_t_wvio << "\n";
+    std::cout << "q_W_VIO: \n";
+    std::cout << final_q_wvio.x() << ", "
+              << final_q_wvio.y() << ", "
+              << final_q_wvio.z() << ", "
+              << final_q_wvio.w() << "\n";
 
     //ros::Subscriber sub_GP = n.subscribe("/svo/backend_pose_imu", 1, leica_callback);
 

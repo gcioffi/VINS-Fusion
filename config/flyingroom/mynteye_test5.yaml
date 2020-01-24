@@ -1,0 +1,16 @@
+%YAML:1.0
+
+sequence: "flyingroom_mynteye_test5"
+first_gp_meas: 0
+
+# World(W) to VIO(V) frame alignement computed in vins-fusion_comparison.ipynb
+t_wv_x: 0.1826141
+t_wv_y: -0.69953633
+t_wv_z: 1.3459093
+q_wv_x: -0.009
+q_wv_y: 0.010
+q_wv_z: 0.999
+q_wv_w: 0.037
+
+# Timestamp first estimate in tightly-coupled approach
+ts_first_estimate: 1576230792.2915432453

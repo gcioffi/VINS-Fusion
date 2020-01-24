@@ -2,3 +2,15 @@
 
 sequence: "V_203"
 first_gp_meas: 0
+
+# World(W) to VIO(V) frame alignement computed in vins-fusion_comparison.ipynb
+t_wv_x: -1.054249
+t_wv_y: 0.427682
+t_wv_z: 1.332841
+q_wv_x: -0.007
+q_wv_y: 0.003
+q_wv_z: 0.048
+q_wv_w: 0.999
+
+# Timestamp first estimate in tightly-coupled approach
+ts_first_estimate: 1413394891.8057603836

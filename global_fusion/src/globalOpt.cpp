@@ -82,13 +82,15 @@ void GlobalOptimization::GPS2XYZ(double latitude, double longitude, double altit
     //printf("gps x: %f y: %f z: %f\n", xyz[0], xyz[1], xyz[2]);
 }
 
-void GlobalOptimization::inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quaterniond OdomQ)
+void GlobalOptimization::inputOdom(double t,
+                                   Eigen::Vector3d OdomP,
+                                   Eigen::Quaterniond OdomQ,
+                                   bool isKeyframe)
 {
 	mPoseMap.lock();
     vector<double> localPose{OdomP.x(), OdomP.y(), OdomP.z(), 
     					     OdomQ.w(), OdomQ.x(), OdomQ.y(), OdomQ.z()};
     localPoseMap[t] = localPose;
-
 
     Eigen::Quaterniond globalQ;
     globalQ = W_T_WVIO.block<3, 3>(0, 0) * OdomQ;
@@ -99,6 +101,31 @@ void GlobalOptimization::inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quate
     lastP = globalP;
     lastQ = globalQ;
     lastTimestamp = t;
+
+    if(isKeyframe)
+    {
+        // Delete measurements
+        if(keyframeTimestampQueue.size() > n_keyframe_to_optimize_)
+        {
+            // Remove last keyframe timestamp
+            keyframeTimestampQueue.pop();
+
+            // Delete local poses.
+            std::map<double, vector<double>>::iterator localPose_it;
+            localPose_it = localPoseMap.find(keyframeTimestampQueue.front());
+            localPoseMap.erase(localPoseMap.begin(), localPose_it);
+
+            // Delete global poses.
+            std::map<double, vector<double>>::iterator globalPose_it;
+            globalPose_it = globalPoseMap.find(keyframeTimestampQueue.front());
+            globalPoseMap.erase(globalPoseMap.begin(), globalPose_it);
+
+            // Delete global position measurements.
+            std::map<double, vector<double>>::iterator globalPosition_it;
+            globalPosition_it = globalPositionMap.find(keyframeTimestampQueue.front());
+            globalPositionMap.erase(globalPositionMap.begin(), globalPosition_it);
+        }
+    }
 
     /*geometry_msgs::PoseStamped pose_stamped;
     pose_stamped.header.stamp = ros::Time(t);
@@ -160,6 +187,47 @@ void GlobalOptimization::optimize()
     {
         if(newGP)
         {
+            // Debug
+            /*std::cout<<"keyframeTimestampQueue\n";
+            std::queue<double> copy_keyframeTimestampQueue = keyframeTimestampQueue;
+            while (!copy_keyframeTimestampQueue.empty())
+            {
+                std::cout << copy_keyframeTimestampQueue.front() << "\n";
+                copy_keyframeTimestampQueue.pop();
+            }
+
+            std::cout<<"localPoseMap\n";
+            std::map<double, std::vector<double>>::iterator local_pose_it;
+            for(local_pose_it = localPoseMap.begin();
+                local_pose_it != localPoseMap.end();
+                ++local_pose_it)
+            {
+                std::cout<< local_pose_it->first << " => "
+                         << local_pose_it->second[0] << '\n';
+            }
+
+            std::cout<<"globalPoseMap\n";
+            std::map<double, std::vector<double>>::iterator global_pose_it;
+            for(global_pose_it = globalPoseMap.begin();
+                global_pose_it != globalPoseMap.end();
+                ++global_pose_it)
+            {
+                std::cout<< global_pose_it->first << " => "
+                         << global_pose_it->second[0] << '\n';
+            }
+
+            std::cout<<"globalPositionMap\n";
+            std::map<double, std::vector<double>>::iterator global_position_it;
+            for(global_position_it = globalPositionMap.begin();
+                global_position_it != globalPositionMap.end();
+                ++global_position_it)
+            {
+                std::cout<< global_position_it->first << " => "
+                         << global_position_it->second[0] << '\n';
+            }*/
+            //end debug
+
+
             newGP = false;
             TicToc globalOptimizationTime;
 

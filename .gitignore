@@ -15,5 +15,6 @@ result_gps.txt
 camera_camera_calib.yaml
 camera_chessboard_data.dat
 cvpr2020_comparison/
+keyframe_based_optimization/
 global_fusion/*.user
 vins_estimator/*.user

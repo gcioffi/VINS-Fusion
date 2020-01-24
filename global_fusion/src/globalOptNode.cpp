@@ -38,11 +38,12 @@ double last_vio_t = -1;
 double last_gp_t = -1;
 std::queue<geometry_msgs::PoseStamped> globalPosQueue;
 std::queue<geometry_msgs::PoseStamped> estimatedPoseQueue;
-std::vector<bool> isKeyframe;
+std::queue<bool> isKeyframeQueue;
 //double gp_rate = 1.5; // Rate with which gp measurements are inserted in the optimization.
 //std::size_t gp_cnt = 0;
 bool global_optimization_started = false;
 int optimization_cnt = 0;
+int first_keyframe_idx = -1;
 
 void readParameters(std::string config_file, std::string& sequence, int &first_gp_meas,
                     Eigen::Vector3d& t_wv, Eigen::Quaterniond& q_wv,
@@ -164,7 +165,7 @@ void loadPoseEstimates(std::string& filename)
       double stamp, x, y, z, qx, qy, qz, qw;
       fs >> id >> stamp >> x >> y >> z >> qx >> qy >> qz >> qw;
 
-      if(!fs.eof())
+      if((!fs.eof()) && (id >= first_keyframe_idx))
       {
           const Eigen::Vector3d position(x, y, z);
           const Eigen::Quaterniond orientation(qw, qx, qy, qz);
@@ -187,7 +188,7 @@ void loadPoseEstimates(std::string& filename)
           estimatedPoseQueue.push(msg);
 
           // Debug
-          /*std::cout << "id, stamp, x, y, z, qx, qy, qz, qw\n";
+          /*std::cout << "Pose estimates\nid, stamp, x, y, z, qx, qy, qz, qw\n";
           std::cout << id << ", "
                     << stamp << ", "
                     << x << ", "
@@ -197,8 +198,8 @@ void loadPoseEstimates(std::string& filename)
                     << qy << ", "
                     << qz << ", "
                     << qw << "\n";
-          ++n;
-          std::cout << "n: " << n << "\n";*/
+          //++n;
+          //std::cout << "n: " << n << "\n";*/
           // end Debug
       }
     }
@@ -216,9 +217,9 @@ void loadFrameStatus(std::string& filename)
     }
 
     // add all gt positions
-    size_t n = 0;
+    //size_t n = 0;
 
-    while(fs.good() && !fs.eof())
+    while(fs.good())
     {
       if(fs.peek() == '#') // skip comments
         fs.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
@@ -230,20 +231,50 @@ void loadFrameStatus(std::string& filename)
       std::string frame_status;
       fs >> id >> stamp >> vio_status >> tracking_quality >> frame_status;
 
-      if(frame_status == "KF")
+      if((frame_status == "KF") && (first_keyframe_idx == -1))
       {
-          isKeyframe.push_back(true);
-      }
-      else
-      {
-          isKeyframe.push_back(false);
+          first_keyframe_idx = id;
       }
 
-      n++;
+      if(!fs.eof())
+      {
+          if(first_keyframe_idx >= 0)
+          {
+              if(frame_status == "KF")
+              {
+                  isKeyframeQueue.push(true);
+              }
+              else
+              {
+                  isKeyframeQueue.push(false);
+              }
+
+              // Debug
+              /*std::cout << "Status: \n id, stamp, vio_status, "
+                           "tracking_quality, frame_status\n";
+              std::cout << id << ", "
+                        << stamp << ", "
+                        << vio_status << ", "
+                        << tracking_quality << ", "
+                        << frame_status << "\n";
+              ++n;
+              std::cout << "n: " << n << "\n";*/
+              // end Debug
+          }
+      }
+    }
+
+    // Debug
+    //std::cout << "first_keyframe_idx: " << first_keyframe_idx << "\n";
+    //end
+
+    if(!(isKeyframeQueue.front() == true))
+    {
+        std::cout<<"------ Something wrong in reading frame status ------\n";
     }
 }
 
-bool callback(const geometry_msgs::PoseStamped pose_msg)
+bool callback(const geometry_msgs::PoseStamped pose_msg, const bool isKeyframe)
 {
     //printf("vio_callback! \n");
     double t = pose_msg.header.stamp.toSec();
@@ -257,7 +288,12 @@ bool callback(const geometry_msgs::PoseStamped pose_msg)
     vio_q.y() = pose_msg.pose.orientation.y;
     vio_q.z() = pose_msg.pose.orientation.z;
 
-    globalEstimator.inputOdom(t, vio_t, vio_q);
+    if(isKeyframe)
+    {
+        globalEstimator.pushKeyframeTimestamp(t);
+    }
+
+    globalEstimator.inputOdom(t, vio_t, vio_q, isKeyframe);
 
     // Sync tolerance.
     // dt = 0.001[s], basically take only the gt measurement with timestamp corresponding
@@ -406,27 +442,38 @@ int main(int argc, char **argv)
     // Load gt.
     std::string gt_fn(
                 "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
-                "cvpr2020_comparison/" + sequence_id + "/groundtruth.txt");
+                "keyframe_based_optimization/" + sequence_id + "/groundtruth.txt");
     /*std::string gt_fn(
                 "/home/giovanni/vins_ws/src/VINS-Fusion/"
                 "cvpr2020_comparison/" + sequence_id + "/groundtruth.txt");*/
     loadGroundTruth(gt_fn, first_gp_meas);
 
+    std::string status_fn(
+                "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
+                "keyframe_based_optimization/" + sequence_id + "/status.txt");
+    loadFrameStatus(status_fn);
+
     std::string svo_fn(
                 "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
-                "cvpr2020_comparison/" + sequence_id + "/traj_estimate.txt");
+                "keyframe_based_optimization/" + sequence_id + "/traj_estimate.txt");
     /*std::string svo_fn(
                 "/home/giovanni/vins_ws/src/VINS-Fusion/"
                 "cvpr2020_comparison/" + sequence_id + "/traj_estimate.txt");*/
     loadPoseEstimates(svo_fn);
 
-    /*std::string status_fn(
-                "/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
-                "cvpr2020_comparison/" + sequence_id + "/svo_traj_estimate.txt");
-    loadFrameStatus(pe_fn);*/
+    if(!(estimatedPoseQueue.size()==isKeyframeQueue.size()))
+    {
+        std::cout << "Pose estimates and status do not have the same number of values\n";
+        std::cout << "pose estimates: " << estimatedPoseQueue.size() << "\n";
+        std::cout << "status: " << isKeyframeQueue.size() << "\n";
+
+        std::cout << "Code aborted!!!\n";
+
+        return 0;
+    }
 
     std::string global_pe_fn("/home/rpg/vins-fusion_ws/src/VINS-Fusion/"
-                             "cvpr2020_comparison/" + sequence_id +
+                             "keyframe_based_optimization/" + sequence_id +
                              "/stamped_traj_estimate.txt");
     /*std::string global_pe_fn("/home/giovanni/vins_ws/src/VINS-Fusion/"
                              "cvpr2020_comparison/" + sequence_id +
@@ -445,11 +492,12 @@ int main(int argc, char **argv)
 
     while(estimatedPoseQueue.size()>0)
     {
-        if(callback(estimatedPoseQueue.front()))
+        if(callback(estimatedPoseQueue.front(), isKeyframeQueue.front()))
         {
             optimization_cnt++;
         }
         estimatedPoseQueue.pop();
+        isKeyframeQueue.pop();
 
         // Debug
         /*std::cout<<"globalEstimator.getOptimizationId(): "

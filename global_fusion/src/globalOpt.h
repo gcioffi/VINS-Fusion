@@ -21,6 +21,7 @@
 #include <ceres/ceres.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
+#include <queue>
 #include "LocalCartesian.hpp"
 #include "tic_toc.h"
 
@@ -33,8 +34,11 @@ public:
 	~GlobalOptimization();
     void setCalib(Eigen::Matrix4d& T_BP);
     void set_T_WVIO(Eigen::Vector3d& t_WVIO, Eigen::Quaterniond& q_WVIO);
+    void pushKeyframeTimestamp(double keyframeTimestamp){
+        keyframeTimestampQueue.push(keyframeTimestamp);
+    }
     void inputGP(double t, Eigen::Vector3d position);
-	void inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quaterniond OdomQ);
+    void inputOdom(double t, Eigen::Vector3d OdomP, Eigen::Quaterniond OdomQ, bool isKeyframe);
     void getGlobalOdom(Eigen::Vector3d &odomP, Eigen::Quaterniond &odomQ, double& last_ts);
     int getOptimizationId(){
         return optimization_cnt_;
@@ -58,6 +62,7 @@ private:
 	map<double, vector<double>> localPoseMap;
 	map<double, vector<double>> globalPoseMap;
     map<double, vector<double>> globalPositionMap;
+    std::queue<double> keyframeTimestampQueue;
 	bool initGPS;
     bool newGP;
 	GeographicLib::LocalCartesian geoConverter;
@@ -73,4 +78,5 @@ private:
     double global_position_meas_square_root_cov_ = 0.001;
     int optimization_cnt_ = 0;
 
+    std::size_t n_keyframe_to_optimize_ = 3;
 };
